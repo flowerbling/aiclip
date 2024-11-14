@@ -384,7 +384,6 @@
     },
     data() {
       return {
-        accound: {},
         selectedFile: '',
         script_data: [],
         status: 'wait',
@@ -462,7 +461,7 @@
     },
     methods: {
       toIndex() {
-        window.location.href = 'http://127.0.0.1:8001/?user_id=' + this.account.user_id;
+        window.location.href = 'http://127.0.0.1:8001';
       },
       onPlayAudio() {
         audioUrl = `http://127.0.0.1:8001/get-tts?voice=${this.voice.speaker}&speed=${this.voice.speed}`
@@ -507,7 +506,7 @@
         params.auto = this.auto;
         params.step = this.step;
         params.style = this.style;
-        params.uid = this.account.user_id;
+        params.uid = "accound";
         params.ctype = this.ctype;
         params.apibase = this.apibase;
         params.apikey = this.apikey;
@@ -521,7 +520,7 @@
               input_path: this.selectedFile,
               auto: this.auto,
               ctype: this.ctype,
-              uid: this.account.user_id,
+              uid: "account",
               step: this.step,
               style: this.style,
               context: this.context,
@@ -612,7 +611,7 @@
         params.script = this.script;
         params.auto = this.auto;
         params.style = this.style;
-        params.uid = this.account.user_id;
+        params.uid = "accound";
         params.ctype = this.ctype;
         params.voice = this.voice;
         params.ctype = this.ctype;

@@ -74,7 +74,6 @@ def process_clip_job():
         )
         if not queued:
             return
-
         job = queued
         input_path = job.params.get("input_path", "")
         stage = job.params.get("step", 0)
@@ -96,7 +95,6 @@ def process_clip_job():
         try:
             if stage == ClipJobStage.ASR:
                 srtpath = replace_ext(input_path, "srt")
-
                 if not os.path.exists(srtpath):
                     start_scan(input_path)
                 videoinfo = get_video_info(input_path)

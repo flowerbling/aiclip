@@ -12,7 +12,7 @@
 https://github.com/flowerbling/aiclip
 
 # 打包好的可运行文件文件下载地址
-windows：
+windows：链接：https://pan.quark.cn/s/ff95e293afff
 
 # 环境配置
 
