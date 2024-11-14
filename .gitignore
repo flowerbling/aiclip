@@ -1,0 +1,6 @@
+algorithm_model/ch_*
+build
+dist
+test.ipynb
+video.db
+ffmpeg

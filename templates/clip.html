@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>AIGC-视频处理工具</title>
+  <script src="../static/js/vue.min.js"></script>
+  <link rel="stylesheet" href="../static/css/eli.css">
+  <script src="../static/js/eli.js"></script>
+  <script src="../static/js/axios.min.js"></script>
+  <script src="../static/components/srtreader.js"></script>
+  <style type="text/css">
+    #app {
+      position: absolute;
+      top: 10px;
+      left: 5%;
+      margin: 0 auto;
+    }
+
+    .app-continar {
+      width: 1000px;
+      position: absolute;
+      top: 50px;
+      left: 5%;
+      margin: 0 auto;
+    }
+
+    .step {
+      margin: 50px auto 100px;
+    }
+
+    .tip-txt {
+      font-size: 12px;
+    }
+
+    .result-video {
+      width: 600px;
+      height: auto;
+    }
+
+    .btn-area {
+      margin-bottom: 50px;
+    }
+  </style>
+</head>
+
+
+<body>
+  <div id="app">
+    <div>
+      <div class="app-continar">
+        <el-steps class="step" :active="step" :process-status="status">
+          <el-step title="1.参数设定"></el-step>
+          <el-step title="2.字幕提取"></el-step>
+          <el-step title="3.解说生成"></el-step>
+          <el-step title="4.视频导出"></el-step>
+        </el-steps>
+
+
+        <el-form v-if="step===1">
+          <!-- 上传文件 -->
+          <el-form-item label="OPENAI配置">
+            <el-input placeholder="请输入内容" v-model="apikey">
+              <template slot="prepend">API KEY</template>
+            </el-input>
+            <el-input placeholder="请输入API Base" v-model="apibase">
+              <template slot="prepend">API BASE</template>
+            </el-input>
+            <el-input placeholder="请输入模型 如：gpt-4o" v-model="model">
+              <template slot="prepend">model</template>
+            </el-input>
+          </el-form-item>
+          <el-form-item label="文件选择">
+            <el-input placeholder="选择或输入本地视频文件路径" v-model="selectedFile" style="width: 400px;"></el-input>
+            <el-button type="primary" @click="selectVideoFile">选择视频文件</el-button>
+          </el-form-item>
+          <!-- 选择剪辑类型 -->
+          <el-form-item label="剪辑类型">
+            <el-radio-group v-model="ctype">
+              <el-radio :label="1">解说剪辑</el-radio>
+              <!-- <el-radio :label="2">解说吐槽</el-radio> -->
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="视频信息">
+            <el-input type="textarea" :autosize="{ minRows: 2, maxRows: 15}"
+              placeholder="可以补充视频相关信息,如视频主要情节,视频主要人物信息等等,以便更好的解说视频" v-model="context">
+            </el-input>
+          </el-form-item>
+          <el-form-item v-if="" label="解说案例">
+            <el-input type="textarea" :autosize="{ minRows: 2, maxRows: 15}" placeholder="可以补充示例解说词,用来调整解说风格"
+              v-model="script">
+            </el-input>
+          </el-form-item>
+          <el-form-item label="解说发音人-语速">
+            <el-select v-model="voice.speaker">
+              <el-option v-for="voice in speakers" :key="voice.value" :label="voice.label" :value="voice.value">
+              </el-option>
+            </el-select>
+            <el-input-number v-model="voice.speed" :min="0" :max="50"></el-input-number>
+            <el-link @click="onPlayAudio" type="primary" :underline="false" size="small">试听</el-link>
+            <audio id="audioplay" src=""></audio>
+          </el-form-item>
+          </el-form-item>
+          <el-form-item label="自动剪辑">
+            <el-switch v-model="auto"></el-switch>
+          </el-form-item>
+          <span class="tip-txt">注:自动剪辑会一口气完成剪辑,非自动剪辑可以预览片段并手动调整</span>
+
+        </el-form>
+        <!-- 视频字幕提取 -->
+        <el-form v-else-if="step===2" v-loading="runningstep===2">
+          <el-form-item label="视频字幕" v-if="data?.params?.srtpath">
+            <el-button :disabled="!data?.params?.srtpath" type="text" @click="srtVisible = true">查看识别结果</el-button>
+          </el-form-item>
+          <el-form-item label="时长" v-if="data?.params?.videoinfo">
+            <div class="tip-txt">{{data?.params?.videoinfo?.duration}}</div>
+          </el-form-item>
+
+          <el-form-item label="帧率" v-if="data?.params?.videoinfo">
+            <div class="tip-txt">{{data?.params?.videoinfo?.fps}}</div>
+          </el-form-item>
+
+          <el-form-item label="宽高比" v-if="data?.params?.videoinfo">
+            <div class="tip-txt">{{data?.params?.videoinfo?.size}}</div>
+          </el-form-item>
+
+          <el-form-item v-if="!data?.params?.videoinfo" label="视频信息">
+            暂未识别
+          </el-form-item>
+        </el-form>
+        <!-- 视频解说脚本生成 -->
+        <el-form v-else-if="step===3" v-loading="runningstep===3">
+          <el-form-item v-if="script_data" label="剪辑片段">
+            <el-table key="script-data-table" :data="script_data" style="width: 100%" height="450">
+              <el-table-column
+              type="index"
+              width="50">
+            </el-table-column>
+              <el-table-column prop="type" label="片段类型" width="100px"></el-table-column>
+              <el-table-column label="片段内容" width="480px">
+                <template slot-scope="scope" class="tip-txt">
+                  {{scope?.row?.content}}
+                </template>
+              </el-table-column>
+              <el-table-column label="起止时间" width="180px">
+                <template slot-scope="scope" class="tip-txt">
+                  {{scope?.row?.time}}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="320px">
+                <template slot-scope="scope">
+                  <el-link @click="onOpenSplit(scope.$index, scope.row)" type="primary" :underline="false"
+                    size="small">调整</el-link>
+                  <el-divider direction="vertical"></el-divider>
+                  <el-link @click="onRemoveSplit(scope.$index)" type="primary" :underline="false"
+                    size="small">删除</el-link>
+                  <el-divider direction="vertical"></el-divider>
+                  <el-link @click="onAddSplit(scope.$index)" type="primary" :underline="false">新增</el-link>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-form-item>
+        </el-form>
+        <el-form v-else-if="step===4" v-loading="runningstep===4">
+          <!-- 视频播放 -->
+          <el-form-item label="文件输出路径">
+            <span v-if="data?.result?.output_path">视频已经成功导出至: {{data?.result?.output_path || ''}}</span>
+          </el-form-item>
+          <el-form-item label="视频播放">
+            <video v-if="data?.result?.output_path" ref="video" :src="getFile(data?.result?.output_path)" controls
+              class="result-video">
+              您的浏览器不支持视频标签。
+            </video>
+          </el-form-item>
+        </el-form>
+
+        <div class="btn-area">
+          <el-button v-if="step!==1" style="margin-top: 12px;" @click="step -= 1">上一步</el-button>
+          <el-button v-if="step === 2 && !auto && !data?.params?.srtpath" :disabled="running || selectedFile === ''"
+            style="margin-top: 12px;" @click="onAsr">视频内容识别</el-button>
+          <el-button v-if="step === 3 && !auto" :disabled="running" style="margin-top: 12px;"
+            @click="onSplit">生成解说</el-button>
+          <el-button v-if="step === 4 && !auto" :disabled="running" style="margin-top: 12px;"
+            @click="onClip">导出视频</el-button>
+          <el-button v-if="step === 1 && auto" :disabled="running || selectedFile === ''" style="margin-top: 12px;"
+            @click="onAsr">开始剪辑</el-button>
+          <el-button v-if="canNext" style="margin-top: 12px;" @click="onNext">下一步</el-button>
+        </div>
+      </div>
+    </div>
+
+    <el-dialog title="视频字幕" :visible.sync="srtVisible" width="60%">
+      <srt-reader :input-path="data?.params?.srtpath" output-path="" :show-uploader="false"></srt-reader>
+      <span slot="footer" class="dialog-footer">
+        <el-button @click="srtVisible = false">取 消</el-button>
+        <el-button type="primary" @click="dialogVisible = false">确 定</el-button>
+      </span>
+    </el-dialog>
+
+    <el-dialog title="调整片段" :visible.sync="splitvisible" :close-on-press-escape="false" :close-on-click-modal="false"
+      @close="onCloseSplit" width="1000px">
+      <el-form>
+        <el-form-item label="片段类型">
+          {{splitdata?.type === '解说' ? '解说' : '视频'}}
+        </el-form-item>
+        <el-form-item label="片段内容" v-if="splitdata?.type === '解说'">
+          <el-input type="textarea" v-model="splitdata.content"></el-input>
+        </el-form-item>
+        <el-form-item label="起止时间">
+          <el-input key='splitdata-start' v-model="splitdata.start" style="width: 130px;"></el-input> -> <el-input
+            key='splitdata-end' v-model="splitdata.end" style="width: 130px;"></el-input>
+        </el-form-item>
+      </el-form>
+      <div slot="footer" class="dialog-footer">
+        <el-button type="primary" @click="onSaveSplit">保存</el-button>
+      </div>
+    </el-dialog>
+
+    <el-dialog title="新增片段" :visible.sync="newsplitvisible" :close-on-press-escape="false" :close-on-click-modal="false"
+      @close="onCloseNewSplit" width="1000px">
+      <el-form>
+        <el-form-item label="片段类型">
+          <el-radio-group v-model="newsplitdata.type">
+            <el-radio label="视频片段">视频片段</el-radio>
+            <el-radio label="解说">解说</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="新增位置">
+          <el-radio-group v-model="newsplitdata.position">
+            <el-radio label="up">上方</el-radio>
+            <el-radio label="down">下方</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="片段内容" v-if="newsplitdata?.type === '解说'">
+          <el-input type="textarea" v-model="newsplitdata.content"></el-input>
+        </el-form-item>
+        <el-form-item label="起止时间">
+          <el-input key='splitdata-start' v-model="newsplitdata.start" style="width: 130px;"></el-input> -> <el-input
+            key='newsplitdata-end' v-model="splitdata.end" style="width: 130px;"></el-input>
+        </el-form-item>
+      </el-form>
+      <div slot="footer" class="dialog-footer">
+        <el-button type="primary" @click="onSaveNewSplit">新增</el-button>
+      </div>
+    </el-dialog>
+
+  </div>
+</body>
+
+<script>
+  Vue.component('srt-reader', SrtReader);
+  const style_map = {
+    "幽默风趣": "你的解说很逗比,让人捧腹大笑",
+    "严肃庄重": "严肃,庄重,一字一句都有威严",
+    "富有哲学": "我们提出问题，我们质疑常规，我们在每一次思考中寻找答案，又在每一个答案中发现新的问题",
+    "充满诗意": "在这如梦的时光里，文字如花瓣般缓缓飘落，在心灵深处绽放出温柔的芬芳",
+    "讽刺讥讽": "通过讽刺和夸张的手法来评论剧中的不合理或过于狗血的情节，让观众在笑声中进行思考。"
+  }
+
+  const styles = [{
+    label: "讽刺讥讽",
+    value: "通过讽刺和夸张的手法来评论剧中的不合理或过于狗血的情节，让观众在笑声中进行思考。",
+  }, {
+    label: "幽默风趣",
+    value: "你的解说很逗比,让人捧腹大笑",
+  }, {
+    label: "严肃庄重",
+    value: "严肃,庄重,一字一句都有威严",
+  }, {
+    label: "富有哲学",
+    value: "我们提出问题，我们质疑常规，我们在每一次思考中寻找答案，又在每一个答案中发现新的问题",
+  }, {
+    label: "充满诗意",
+    value: "在这如梦的时光里，文字如花瓣般缓缓飘落，在心灵深处绽放出温柔的芬芳",
+  }]
+
+  const speakers = [
+    {
+      "label": "小晓-女-中国大陆",
+      "value": "zh-CN-XiaoxiaoNeural",
+      "rate": 30
+    },
+    {
+      "label": "小易-女-中国大陆",
+      "value": "zh-CN-XiaoyiNeural",
+      "rate": 30
+    },
+    {
+      "label": "云健-男-中国大陆",
+      "value": "zh-CN-YunjianNeural",
+      "rate": 30
+    },
+    {
+      "label": "云熙-男-中国大陆",
+      "value": "zh-CN-YunxiNeural",
+      "rate": 30
+    },
+    {
+      "label": "云夏-男孩-中国大陆",
+      "value": "zh-CN-YunxiaNeural",
+      "rate": 30
+    },
+    {
+      "label": "云扬-男-中国大陆",
+      "value": "zh-CN-YunyangNeural",
+      "rate": 30
+    },
+    {
+      "label": "小北-女-辽宁",
+      "value": "zh-CN-liaoning-XiaobeiNeural",
+      "rate": 30
+    },
+    {
+      "label": "小妮-女-陕西",
+      "value": "zh-CN-shaanxi-XiaoniNeural",
+      "rate": 30
+    },
+    {
+      "label": "曉佳-女-香港",
+      "value": "zh-HK-HiuGaaiNeural",
+      "rate": 5
+    },
+    {
+      "label": "曉曼-女-香港",
+      "value": "zh-HK-HiuMaanNeural",
+      "rate": 30
+    },
+    {
+      "label": "王伦-男-香港",
+      "value": "zh-HK-WanLungNeural",
+      "rate": 30
+    },
+    {
+      "label": "小陈-女-台湾",
+      "value": "zh-TW-HsiaoChenNeural",
+      "rate": 30
+    },
+    {
+      "label": "小玉-女-台湾",
+      "value": "zh-TW-HsiaoYuNeural",
+      "rate": 40
+    },
+    {
+      "label": "云哲-男-台湾",
+      "value": "zh-TW-YunJheNeural",
+      "rate": 30
+    },
+    {
+      "label": "米切尔-女-英文",
+      "value": "en-US-MichelleNeural",
+      "rate": 30
+    },
+    {
+      "label": "斯文娜-女-俄文",
+      "value": "ru-RU-SvetlanaNeural",
+      "rate": 30
+    },
+
+    //  {
+    //    "label": "小达-女-上海",
+    //    "value": "zh-SH-Xiaoda",
+    //    "rate": 30
+    //  }
+  ]
+
+  const defaultscript = [{
+    "type": "解说",
+    "content": "郭槐莞尔一笑,这个嘛我带到是听说,李娘娘确实生下过一胎, 至于生太子嘛, 我着实不知道. 王朝心咯噔了一下,转身就看向了陈林,紧接着他就开始让陈林回忆这件事儿的种种细节",
+    "time": "00:00:00,000 --> 00:00:05,319"
+  },
+  {
+    "type": "video",
+    "time": "00:00:016,560 --> 00:00:32,120"
+  },
+  {
+    "type": "解说",
+    "content": "陈林回忆着二十年前的往事,他还记得那天寇珠怀中抱着一个孩子",
+    "time": "00:00:07,200 --> 00:00:012,310"
+  }]
+
+  new Vue({
+    el: '#app',
+    components: {
+      SrtReader,
+    },
+    data() {
+      return {
+        accound: {},
+        selectedFile: '',
+        script_data: [],
+        status: 'wait',
+        job_type: 'clip',
+        ctype: 1,
+        step: 1,
+        running: false,
+        auto: false,
+        srtVisible: false,
+        splitvisible: false,
+        newsplitvisible: false,
+        apibase: "",
+        apikey: "",
+        model: "gpt-4o",
+        style: "讽刺讥讽",
+        splitdata: {
+          idx: 0,
+          start: "00:00:00,000",
+          end: "00:00:00,000",
+          content: "",
+        },
+        newsplitdata: {
+          idx: 0,
+          start: "00:00:00,000",
+          end: "00:00:00,000",
+          content: "",
+          type: "解说",
+          position: 'up',
+        },
+        voice: {
+          speaker: "zh-CN-XiaoxiaoNeural",
+          speed: 30
+        },
+        context: "",
+        script: "",
+        runningstep: 0,
+        data: {
+          id: 0,
+          params: {
+          }
+        }
+      };
+    },
+    mounted() {
+      this.clearData();
+    },
+    computed: {
+      // 计算属性 `canNext` 决定是否可以前往下一页
+      canNext() {
+        // console.log(this.step)
+        if (this.step === 1) {
+          if (this.selectedFile === '') {
+            return false;
+          }
+        }
+
+        if (this.step === 2) {
+          if (!this.data?.params?.srtpath) {
+            return false;
+          }
+        }
+
+        if (this.step === 3) {
+          if (!this.data?.params?.script_data) {
+            return false;
+          }
+        }
+
+        if (this.step === 4) {
+          return false;
+        }
+
+        return true;
+      },
+    },
+    methods: {
+      toIndex() {
+        window.location.href = 'http://127.0.0.1:8001/?user_id=' + this.account.user_id;
+      },
+      onPlayAudio() {
+        audioUrl = `http://127.0.0.1:8001/get-tts?voice=${this.voice.speaker}&speed=${this.voice.speed}`
+        this.$message("音频正在加载中,稍后自动播放,请勿重复点击")
+        const audioElement = document.getElementById('audioplay');
+        audioElement.src = audioUrl;
+        audioElement.load();
+        audioElement.play().catch(error => {
+          this.$message.error("音频加载失败");
+          console.log(error);
+        });
+      },
+      getFile(filepath) {
+        return 'http://127.0.0.1:8001/get-file/?filepath=' + filepath
+      },
+      clearData() {
+
+      },
+      selectVideoFile() {
+        axios.get('http://127.0.0.1:8001/select-file/', {
+          params: {
+            file_types: "Video Files (*.mp4;*.avi;*.mkv;*.mov)"
+          }
+        }).then(response => {
+          filepath = response.data.filepath
+          if (filepath) {
+            this.selectedFile = filepath;
+            this.$message("选择文件成功");
+          } else {
+            this.$message.error("选择文件取消");
+          }
+        }).catch(error => {
+          this.$message.error("选择文件失败");
+        })
+      },
+      onAsr() {
+        this.running = true;
+        this.step = 2;
+        this.runningstep = 2;
+        let params = this.data.params;
+        params.input_path = this.selectedFile;
+        params.auto = this.auto;
+        params.step = this.step;
+        params.style = this.style;
+        params.uid = this.account.user_id;
+        params.ctype = this.ctype;
+        params.apibase = this.apibase;
+        params.apikey = this.apikey;
+        params.model = this.model;
+
+
+        if (this.data.id == 0) {
+          axios.post('http://127.0.0.1:8001/job-add/', {
+            'job_type': this.job_type,
+            'params': {
+              input_path: this.selectedFile,
+              auto: this.auto,
+              ctype: this.ctype,
+              uid: this.account.user_id,
+              step: this.step,
+              style: this.style,
+              context: this.context,
+              script: this.script,
+              voice: this.voice,
+              ctype: this.ctype,
+              apikey: this.apikey,
+              model: this.model,
+              apibase: this.apibase,
+            }
+          }).then(response => {
+            if (response.data.code != 200) {
+              this.$message.error(response.data.msg);
+            }
+            this.data = response.data.data;
+            this.checkStatus();
+          }).catch(error => {
+            this.$message.error("请求失败.");
+            this.running = false;
+          })
+        } else {
+          axios.put('http://127.0.0.1:8001/job-update/', {
+            id: this.data.id,
+            status: "queued",
+            params: params,
+          }).then(response => {
+            if (response.data.code != 200) {
+              this.$message.error(response.data.msg);
+            }
+            this.checkStatus();
+          }).catch(error => {
+            this.$message.error("请求失败.");
+            this.running = false;
+          })
+        }
+
+      },
+      onSplit() {
+        this.running = true;
+        this.step = 3;
+        this.runningstep = 3;
+        let params = this.data.params;
+        params.step = this.step;
+        params.script = this.script;
+        params.context = this.context;
+        params.voice = this.voice;
+        params.ctype = this.ctype;
+        params.apibase = this.apibase;
+        params.apikey = this.apikey;
+        params.model = this.model;
+
+        axios.put('http://127.0.0.1:8001/job-update/', {
+          id: this.data.id,
+          status: "queued",
+          params: params
+        }).then(response => {
+          if (response.data.code != 200) {
+            this.$message.error(response.data.msg);
+            this.running = false;
+          } else {
+            this.checkStatus();
+          }
+        }).catch(error => {
+          this.$message.error("请求失败.");
+          this.running = false;
+        })
+      },
+      startNext() {
+        if (this.step == 1) {
+          this.onAsr();
+        }
+        else if (this.step == 2) {
+          this.onSplit();
+        }
+        else if (this.step == 3) {
+          this.onClip();
+        }
+        else if (this.step == 4) {
+          this.onDisplay();
+        }
+      },
+      onClip() {
+        this.running = true;
+        this.step = 4;
+        this.runningstep = 4;
+        let params = this.data.params;
+        params.step = this.step;
+        params.script = this.script;
+        params.auto = this.auto;
+        params.style = this.style;
+        params.uid = this.account.user_id;
+        params.ctype = this.ctype;
+        params.voice = this.voice;
+        params.ctype = this.ctype;
+        params.apibase = this.apibase;
+        params.apikey = this.apikey;
+        params.model = this.model;
+
+        params.script_data = this.script_data;
+        axios.put('http://127.0.0.1:8001/job-update/', {
+          id: this.data.id,
+          status: "queued",
+          params: params
+        }).then(response => {
+          if (response.data.code != 200) {
+            this.$message.error(response.data.msg);
+            this.running = false;
+          } else {
+            this.checkStatus();
+          }
+        }).catch(error => {
+          this.$message.error("请求失败.");
+          this.running = false;
+        })
+      },
+      onDisplay() {
+        this.runningstep = 0;
+      },
+      checkStatus() {
+        axios.get('http://127.0.0.1:8001/job-get/?id=' + this.data.id, {}).then(response => {
+          if (response.data.code != 200) {
+            this.$message.error(response.data.msg);
+            this.running = false;
+          }
+          this.data = response.data.data;
+          if (this.data.status === 'finished' || this.data.status === 'failed') {
+            this.running = false;
+            this.runningstep = 0;
+            if (this.data.status === 'finished') {
+              this.canNext = true;
+              if ((this.data.params?.script_data || []).length > 0) {
+                this.script_data = this.data.params.script_data;
+              }
+              if (this.auto) {
+                this.startNext();
+              }
+            } else {
+            }
+          } else {
+            setTimeout(() => {
+              this.checkStatus();
+            }, 2000);
+          }
+        }).catch(error => {
+          this.$message.error("请求失败.");
+          this.running = false;
+        })
+      },
+      onNext() {
+        if (this.step === 1) {
+          if (this.selectedFile === '') {
+            this.$message.error("请选择视频文件");
+            return false;
+          }
+
+        }
+
+        this.step += 1;
+
+      },
+      onOpenSplit(idx, rowdata) {
+        let data = rowdata;
+        const times = rowdata.time.split('-->');
+        const start = times[0].trim();
+        const end = times[1].trim();
+        this.splitdata = { idx: idx, start: start, end: end, type: rowdata.type, content: rowdata?.content || '' };
+        this.splitvisible = true;
+      },
+      onAddSplit(idx) {
+        this.newsplitdata = { idx: idx, start: "00:00:00,000", end: "00:00:00,000", type: '解说', content: "", position: "up" }
+        this.newsplitvisible = true;
+      },
+      onRemoveSplit(idx) {
+        let script_data = this.script_data;
+
+        script_data.splice(idx, 1);
+        this.script_data = script_data;
+      },
+      onCloseSplit() {
+        this.splitdata = {};
+        this.splitvisible = false;
+      },
+      onCloseNewSplit() {
+        this.newsplitdata = {};
+        this.newsplitvisible = false;
+      },
+      onSaveNewSplit() {
+        // 检查格式
+        let start = this.newsplitdata.start.trim();
+        if (!start.match(/^\d{2}:\d{2}:\d{2},\d{3}$/)) {
+          this.$message.error("开始时间格式错误");
+        }
+        let end = this.newsplitdata.end.trim();
+        if (!end.match(/^\d{2}:\d{2}:\d{2},\d{3}$/)) {
+          this.$message.error("结束时间格式错误");
+        }
+        this.newsplitdata.time = `${this.newsplitdata.start} --> ${this.newsplitdata.end}`;
+        let script_data = this.script_data;
+        let data = {
+          type: this.newsplitdata.type,
+          time: this.newsplitdata.time,
+          content: this.newsplitdata.content,
+        }
+
+        if (this.newsplitdata.position === 'up') {
+          // 在idx之前插入
+          script_data.splice(this.newsplitdata.idx, 0, data);
+        } else if (this.newsplitdata.position === 'down') {
+          // 在idx之后插入
+          script_data.splice(this.newsplitdata.idx + 1, 0, data);
+        }
+
+        this.script_data = script_data;
+        this.onCloseNewSplit();
+      },
+      onSaveSplit() {
+        // 检查格式
+        let start = this.splitdata.start.trim();
+        if (!start.match(/^\d{2}:\d{2}:\d{2},\d{3}$/)) {
+          this.$message.error("开始时间格式错误");
+        }
+        let end = this.splitdata.end.trim();
+        if (!end.match(/^\d{2}:\d{2}:\d{2},\d{3}$/)) {
+          this.$message.error("结束时间格式错误");
+        }
+        this.splitdata.time = `${this.splitdata.start} --> ${this.splitdata.end}`;
+        let script_data = this.script_data;
+        let data = {
+          type: this.splitdata.type,
+          time: this.splitdata.time,
+          content: this.splitdata.content,
+        }
+        if (this.splitdata.addBefore) {
+          // 在idx之前插入
+          script_data.splice(this.splitdata.idx, 0, data);
+        } else if (this.splitdata.addBehind) {
+          // 在idx之后插入
+          script_data.splice(this.splitdata.idx + 1, 0, data);
+        } else {
+          // 原地修改
+          script_data.splice(this.splitdata.idx, 1, data);
+        }
+
+        this.script_data = script_data;
+        this.onCloseSplit();
+      },
+    },
+  })
+
+</script>
