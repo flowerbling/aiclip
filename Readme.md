@@ -25,7 +25,7 @@ conda create -n aiclip python=3.10
 conda activate aiclip
 pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-# 下载ffmpeg.exe 到ffmpeg目录下
+# 下载ffmpeg.exe 到ffmpeg目录下 https://www.ffmpeg.org/download.html
 python app.py
 ```
 
